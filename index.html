@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#ffffff">
+    <title>Vista - Map Your Time</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;400;500;700&family=Outfit:wght@200;300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['DM Sans', 'sans-serif'],
+                        display: ['Outfit', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: { light: '#4f46e5', dark: '#818cf8' }
+                    },
+                    animation: {
+                        'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        'float': 'float 6s ease-in-out infinite',
+                    },
+                    keyframes: {
+                        float: {
+                            '0%, 100%': { transform: 'translateY(0)' },
+                            '50%': { transform: 'translateY(-10px)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* Reduced from 500ms to 200ms for snappier feel */
+        body { transition: background-color 0.2s ease, color 0.2s ease; }
+        #bg-canvas { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; transition: opacity 0.5s ease; }
+        .input-group input:focus { box-shadow: 0 0 0 2px currentColor; }
+        .fade-in-up { animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards; opacity: 0; transform: translateY(20px); }
+        @keyframes fadeInUp { to { opacity: 1; transform: translateY(0); } }
+        
+        /* Grid Enhancements: Removed bg transition for performance */
+        .week-cell { transition: transform 0.1s ease; }
+        .week-cell:hover { transform: scale(3); z-index: 50; border-radius: 2px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); transition: transform 0.1s ease; }
+
+        /* Custom Scrollbar for stats panel */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-50 antialiased min-h-screen flex flex-col font-sans transition-colors duration-200 selection:bg-indigo-500/30 selection:text-indigo-600 dark:selection:text-indigo-200 overflow-x-hidden">
+
+    <!-- Dynamic Background -->
+    <canvas id="bg-canvas"></canvas>
+
+    <!-- Header -->
+    <header class="w-full p-6 md:p-8 z-50 flex justify-between items-center pointer-events-none bg-transparent relative">
+        <div class="pointer-events-auto flex items-center gap-3 cursor-pointer" onclick="window.location.reload()">
+            <div class="w-8 h-8 bg-gradient-to-tr from-indigo-600 to-violet-600 dark:from-indigo-400 dark:to-indigo-500 rounded-lg shadow-lg"></div>
+            <h1 class="text-2xl font-display font-bold tracking-tight text-zinc-900 dark:text-zinc-50">Vista</h1>
+        </div>
+        
+        <div class="flex items-center gap-3 pointer-events-auto">
+            <button id="theme-toggle" class="p-2.5 rounded-full hover:bg-zinc-100 dark:hover:bg-white/10 transition-colors text-zinc-600 dark:text-zinc-400">
+                <i data-lucide="sun" class="w-5 h-5 hidden dark:block"></i>
+                <i data-lucide="moon" class="w-5 h-5 block dark:hidden"></i>
+            </button>
+            <button id="reset-btn" class="hidden text-zinc-600 hover:text-indigo-700 dark:text-zinc-400 dark:hover:text-indigo-400 transition-colors flex items-center gap-2 group px-4 py-2 rounded-full hover:bg-zinc-100 dark:hover:bg-white/5" aria-label="reset">
+                <span class="text-xs font-bold tracking-wide uppercase opacity-0 group-hover:opacity-100 transition-opacity -translate-x-2 group-hover:translate-x-0 duration-300">Restart</span>
+                <i data-lucide="rotate-ccw" class="w-5 h-5"></i>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-grow w-full flex flex-col items-center justify-center relative min-h-0">
+        
+        <!-- View 1: Input -->
+        <section id="input-view" class="w-full max-w-lg px-6 flex flex-col items-center justify-center min-h-[60vh] fade-in-up">
+            <div class="w-full relative z-10">
+                <div class="mb-12 text-center md:text-left">
+                    <h2 class="text-5xl md:text-7xl font-display font-light mb-6 tracking-tight leading-none text-zinc-900 dark:text-zinc-50">
+                        See your <br />
+                        <span class="font-medium text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-violet-600 dark:from-indigo-400 dark:to-purple-400 animate-float inline-block">whole life.</span>
+                    </h2>
+                    <p class="text-zinc-600 dark:text-zinc-400 text-xl font-light">Enter your origin date.</p>
+                </div>
+                
+                <form id="birth-form" class="space-y-8">
+                    <div class="grid grid-cols-3 gap-3 input-group">
+                        <div class="space-y-2">
+                            <label class="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-[0.2em] pl-1">Day</label>
+                            <input type="number" id="day" placeholder="DD" min="1" max="31" step="1" required class="w-full bg-zinc-50 dark:bg-zinc-900/50 text-center text-3xl font-display py-4 rounded-xl border border-zinc-300 dark:border-white/10 focus:outline-none focus:border-indigo-600 dark:focus:border-indigo-400 transition-all placeholder-zinc-300 dark:placeholder-zinc-800 text-zinc-900 dark:text-white shadow-sm">
+                        </div>
+                        <div class="space-y-2">
+                            <label class="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-[0.2em] pl-1">Month</label>
+                            <input type="number" id="month" placeholder="MM" min="1" max="12" step="1" required class="w-full bg-zinc-50 dark:bg-zinc-900/50 text-center text-3xl font-display py-4 rounded-xl border border-zinc-300 dark:border-white/10 focus:outline-none focus:border-indigo-600 dark:focus:border-indigo-400 transition-all placeholder-zinc-300 dark:placeholder-zinc-800 text-zinc-900 dark:text-white shadow-sm">
+                        </div>
+                        <div class="space-y-2">
+                            <label class="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-[0.2em] pl-1">Year</label>
+                            <input type="number" id="year" placeholder="YYYY" min="1870" max="2026" step="1" required class="w-full bg-zinc-50 dark:bg-zinc-900/50 text-center text-3xl font-display py-4 rounded-xl border border-zinc-300 dark:border-white/10 focus:outline-none focus:border-indigo-600 dark:focus:border-indigo-400 transition-all placeholder-zinc-300 dark:placeholder-zinc-800 text-zinc-900 dark:text-white shadow-sm">
+                        </div>
+                    </div>
+                    <p id="error-msg" class="text-base text-rose-600 dark:text-rose-400 hidden text-center font-bold">Invalid date. Check Month (1-12) & Year (1870+).</p>
+                    <button type="submit" class="w-full bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 font-display text-xl py-4 rounded-xl hover:scale-[1.01] transition-all duration-300 flex items-center justify-center gap-2 font-bold shadow-md hover:shadow-lg">
+                        <span>Generate Vista</span>
+                        <i data-lucide="arrow-right" class="w-5 h-5"></i>
+                    </button>
+                </form>
+            </div>
+        </section>
+
+        <!-- View 2: Visualization -->
+        <section id="visual-view" class="hidden w-full min-h-screen md:h-screen p-4 md:p-8 fade-in-up md:overflow-hidden box-border bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-50">
+            <div class="min-h-full w-full max-w-[1600px] mx-auto flex flex-col md:flex-row gap-8 md:gap-12 items-center justify-center relative pb-12 md:pb-0">
+                
+                <!-- Left Panel: Stats (Fixed: Uses flex-grow/shrink properly to avoid clipping on small screens) -->
+                <!-- Removed justify-center from inner div, using flex-grow my-auto for vertical centering when space allows -->
+                <div class="w-full md:w-1/3 lg:w-1/4 h-auto md:h-full z-10 md:overflow-y-auto no-scrollbar pr-0 md:pr-4 order-2 md:order-1 flex flex-col">
+                    <div class="min-h-min md:h-full flex flex-col justify-start md:justify-center py-4 md:py-8">
+                        <!-- Content Wrapper for auto margins -->
+                        <div class="my-auto w-full">
+                            <!-- Main Stat Group -->
+                            <div class="mb-10 pt-4 md:pt-0"> <!-- Added padding top for safety -->
+                                <h2 class="text-6xl md:text-8xl font-display font-medium mb-2 tracking-tighter leading-none text-zinc-900 dark:text-white">
+                                    <span id="weeks-lived-display" class="tabular-nums text-transparent bg-clip-text bg-gradient-to-br from-indigo-700 to-purple-700 dark:from-indigo-400 dark:to-indigo-600">0</span>
+                                </h2>
+                                <span class="text-2xl md:text-3xl text-zinc-600 dark:text-zinc-400 font-light block mt-1">weeks lived</span>
+                                
+                                <p class="text-lg md:text-xl text-zinc-700 dark:text-zinc-300 font-normal mt-6 leading-relaxed">
+                                    You have traversed <span id="percentage-display" class="font-bold text-zinc-900 dark:text-white">0%</span> of a 90-year orbit. 
+                                    Each dot is a week. The glowing ember is <span class="text-amber-600 dark:text-amber-500 font-bold">now</span>.
+                                </p>
+                            </div>
+
+                            <!-- Progress Bar -->
+                            <div class="w-full bg-zinc-300 dark:bg-zinc-800 h-2 rounded-full overflow-hidden mb-10">
+                                <div id="progress-bar-fill" class="bg-indigo-600 dark:bg-indigo-500 h-full w-0 transition-all duration-1000 shadow-[0_0_10px_rgba(99,102,241,0.5)]"></div>
+                            </div>
+
+                            <!-- Detailed Stats -->
+                            <div class="flex flex-col gap-5 mb-10">
+                                <div class="flex justify-between items-center text-base border-b border-zinc-200 dark:border-white/10 pb-4 group hover:border-indigo-300 dark:hover:border-indigo-500/30 transition-colors">
+                                    <span class="text-zinc-600 dark:text-zinc-400 font-bold uppercase tracking-wider text-xs group-hover:text-indigo-700 dark:group-hover:text-indigo-400 transition-colors">Summers Left</span>
+                                    <span id="summers-left" class="font-display font-bold text-zinc-900 dark:text-zinc-100 tabular-nums text-xl">0</span>
+                                </div>
+                                <div class="flex justify-between items-center text-base border-b border-zinc-200 dark:border-white/10 pb-4 group hover:border-indigo-300 dark:hover:border-indigo-500/30 transition-colors">
+                                    <span class="text-zinc-600 dark:text-zinc-400 font-bold uppercase tracking-wider text-xs group-hover:text-indigo-700 dark:group-hover:text-indigo-400 transition-colors">Saturdays Left</span>
+                                    <span id="saturdays-left" class="font-display font-bold text-zinc-900 dark:text-zinc-100 tabular-nums text-xl">0</span>
+                                </div>
+                                <div class="flex justify-between items-center text-base group">
+                                    <span class="text-zinc-600 dark:text-zinc-400 font-bold uppercase tracking-wider text-xs group-hover:text-indigo-700 dark:group-hover:text-indigo-400 transition-colors">Current Era</span>
+                                    <span id="life-era" class="font-display font-bold text-indigo-700 dark:text-indigo-400 text-xl">Loading...</span>
+                                </div>
+                            </div>
+
+                            <!-- Legend -->
+                            <div class="flex flex-col gap-3 mb-8 pl-1 border-l-2 border-zinc-200 dark:border-zinc-800">
+                                <h3 class="text-xs font-bold text-zinc-500 dark:text-zinc-500 uppercase tracking-widest mb-1 ml-3">Chronology Key</h3>
+                                <div class="grid grid-cols-2 gap-y-4 gap-x-2 ml-3">
+                                    <div class="flex items-center gap-2 group">
+                                        <div class="w-2.5 h-2.5 bg-indigo-300 dark:bg-indigo-400 rounded-full group-hover:scale-125 transition-transform"></div>
+                                        <div class="flex flex-col leading-none">
+                                            <span class="text-xs uppercase tracking-wider text-zinc-600 dark:text-zinc-400 font-bold">The Beginning</span>
+                                            <span class="text-[10px] text-zinc-500 dark:text-zinc-600 font-medium mt-0.5">Youth & Growth</span>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-center gap-2 group">
+                                        <div class="w-2.5 h-2.5 bg-indigo-600 dark:bg-indigo-600 rounded-full group-hover:scale-125 transition-transform"></div>
+                                        <div class="flex flex-col leading-none">
+                                            <span class="text-xs uppercase tracking-wider text-zinc-600 dark:text-zinc-400 font-bold">History</span>
+                                            <span class="text-[10px] text-zinc-500 dark:text-zinc-600 font-medium mt-0.5">Lived exp.</span>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-center gap-2 group">
+                                        <div class="w-2.5 h-2.5 bg-amber-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(245,158,11,0.6)] group-hover:scale-125 transition-transform"></div>
+                                        <div class="flex flex-col leading-none">
+                                            <span class="text-xs uppercase tracking-wider text-zinc-600 dark:text-zinc-400 font-bold">The Present</span>
+                                            <span class="text-[10px] text-zinc-500 dark:text-zinc-600 font-medium mt-0.5">Burning edge</span>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-center gap-2 group">
+                                        <div class="w-2.5 h-2.5 bg-zinc-300 dark:bg-zinc-800 rounded-sm group-hover:scale-125 transition-transform"></div>
+                                        <div class="flex flex-col leading-none">
+                                            <span class="text-xs uppercase tracking-wider text-zinc-600 dark:text-zinc-400 font-bold">The Void</span>
+                                            <span class="text-[10px] text-zinc-500 dark:text-zinc-600 font-medium mt-0.5">Potential</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Quote -->
+                            <div class="mt-auto pt-6 border-t border-zinc-200 dark:border-white/5 hover:opacity-100 transition-opacity">
+                                <p id="quote-text" class="text-lg font-display font-medium italic text-zinc-800 dark:text-zinc-200 mb-2 leading-snug">"The two most important days in your life are the day you are born and the day you find out why."</p>
+                                <p id="quote-author" class="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">— Mark Twain</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Panel: Grid -->
+                <div class="w-full md:w-2/3 lg:w-3/4 h-auto md:h-full flex flex-col items-center justify-start md:justify-center relative p-2 order-1 md:order-2" id="grid-container-parent">
+                    <div id="grid-wrapper" class="relative w-full md:w-auto">
+                        <div id="life-grid" class="grid w-full" role="img">
+                            <!-- Injected by JS -->
+                        </div>
+                        
+                        <!-- Axis Labels -->
+                        <div class="hidden md:flex absolute -left-10 top-0 h-full flex-col justify-between text-xs text-zinc-500 dark:text-zinc-600 font-display font-bold py-1 select-none">
+                            <span>Origin</span>
+                            <span>30Y</span>
+                            <span>60Y</span>
+                            <span>90Y Horizon</span>
+                        </div>
+                        <div class="flex md:hidden absolute -left-6 top-0 h-full flex-col justify-between text-[10px] text-zinc-500 dark:text-zinc-600 font-display font-bold py-1 select-none">
+                            <span>0</span><span>45</span><span>90</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        // --- Core & Audio ---
+        const html = document.documentElement;
+        const themeMeta = document.querySelector('meta[name="theme-color"]');
+        
+        document.getElementById('theme-toggle').addEventListener('click', () => {
+            html.classList.toggle('dark');
+            const isDark = html.classList.contains('dark');
+            themeMeta.setAttribute('content', isDark ? '#09090b' : '#ffffff'); // Use zinc-950 for dark, white for light
+            if (window.particleSystem) window.particleSystem.refreshColors();
+        });
+
+        class AudioEngine {
+            constructor() { this.ctx = null; }
+            init() { 
+                if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                if (this.ctx.state === 'suspended') this.ctx.resume();
+            }
+            playTone(freq, duration = 0.1) {
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                gain.gain.setValueAtTime(0.05, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
+                osc.connect(gain); gain.connect(this.ctx.destination);
+                osc.start(); osc.stop(this.ctx.currentTime + duration);
+            }
+        }
+        const audio = new AudioEngine();
+        ['click', 'keydown'].forEach(evt => document.body.addEventListener(evt, () => audio.init(), { once: true }));
+
+        // --- Particle System ---
+        class ParticleSystem {
+            constructor() {
+                this.canvas = document.getElementById('bg-canvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.particles = [];
+                this.colors = { dark: '255, 255, 255', light: '24, 24, 27' };
+                this.resize();
+                window.addEventListener('resize', () => this.resize());
+                this.initParticles();
+                this.animate();
+                window.particleSystem = this;
+            }
+            resize() { this.canvas.width = window.innerWidth; this.canvas.height = window.innerHeight; }
+            refreshColors() {}
+            initParticles() {
+                this.particles = [];
+                for (let i = 0; i < 40; i++) {
+                    this.particles.push({
+                        x: Math.random() * this.canvas.width, y: Math.random() * this.canvas.height,
+                        vx: (Math.random() - 0.5) * 0.1, vy: (Math.random() - 0.5) * 0.1,
+                        size: Math.random() * 2, alpha: Math.random() * 0.5
+                    });
+                }
+            }
+            animate() {
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                const isDark = document.documentElement.classList.contains('dark');
+                // Make particles slightly more visible in light mode too (darker grey)
+                const color = isDark ? this.colors.dark : '50, 50, 50';
+                this.particles.forEach(p => {
+                    p.x += p.vx; p.y += p.vy;
+                    if(p.x < 0) p.x = this.canvas.width; if(p.x > this.canvas.width) p.x = 0;
+                    if(p.y < 0) p.y = this.canvas.height; if(p.y > this.canvas.height) p.y = 0;
+                    this.ctx.beginPath();
+                    this.ctx.arc(p.x, p.y, p.size, 0, Math.PI*2);
+                    this.ctx.fillStyle = `rgba(${color}, ${p.alpha * 0.25})`;
+                    this.ctx.fill();
+                });
+                requestAnimationFrame(() => this.animate());
+            }
+        }
+        new ParticleSystem();
+
+        // --- Logic ---
+        const TOTAL_YEARS = 90;
+        const WEEKS_PER_YEAR = 52;
+        const TOTAL_WEEKS = TOTAL_YEARS * WEEKS_PER_YEAR;
+
+        const viewInput = document.getElementById('input-view');
+        const viewVisual = document.getElementById('visual-view');
+        const gridContainer = document.getElementById('life-grid');
+        const stats = {
+            lived: document.getElementById('weeks-lived-display'),
+            percent: document.getElementById('percentage-display'),
+            summers: document.getElementById('summers-left'),
+            saturdays: document.getElementById('saturdays-left'),
+            era: document.getElementById('life-era'),
+            bar: document.getElementById('progress-bar-fill'),
+            quoteText: document.getElementById('quote-text'),
+            quoteAuthor: document.getElementById('quote-author')
+        };
+        const inpDay = document.getElementById('day');
+        const inpMonth = document.getElementById('month');
+        const inpYear = document.getElementById('year');
+
+        const quotes = [
+            { text: "The two most important days in your life are the day you are born and the day you find out why.", author: "Mark Twain" },
+            { text: "Your time is limited, so don't waste it living someone else's life.", author: "Steve Jobs" },
+            { text: "Life is what happens when you're busy making other plans.", author: "John Lennon" },
+            { text: "It is not that we have a short time to live, but that we waste a lot of it.", author: "Seneca" },
+        ];
+
+        lucide.createIcons();
+
+        // Input Logic: Auto-advance and Validation
+        function setupInput(el, nextEl, maxLen, minVal, maxVal) {
+            // Arrow navigation
+            el.addEventListener('keydown', (e) => {
+                if (e.key === 'ArrowRight' && nextEl) {
+                    nextEl.focus();
+                }
+                if (e.key === 'ArrowLeft') {
+                    // Navigate back
+                    if (el === inpYear) inpMonth.focus();
+                    if (el === inpMonth) inpDay.focus();
+                }
+            });
+
+            el.addEventListener('input', () => {
+                if (el.value.length >= maxLen) {
+                    if (nextEl) nextEl.focus();
+                }
+            });
+            el.addEventListener('blur', () => {
+                if (el.value === "") return;
+                let val = parseInt(el.value);
+                if (isNaN(val)) el.value = ""; 
+                else {
+                    if (minVal !== undefined && val < minVal) el.value = minVal;
+                    if (maxVal !== undefined && val > maxVal) el.value = maxVal;
+                }
+            });
+        }
+
+        setupInput(inpDay, inpMonth, 2, 1, 31);
+        setupInput(inpMonth, inpYear, 2, 1, 12);
+        setupInput(inpYear, null, 4, 1870, 2026);
+
+        document.getElementById('birth-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            audio.playTone(600);
+            
+            const d = parseInt(inpDay.value);
+            const m = parseInt(inpMonth.value);
+            const y = parseInt(inpYear.value);
+
+            const now = new Date();
+            if ( isNaN(d) || isNaN(m) || isNaN(y) || 
+                 m < 1 || m > 12 || 
+                 d < 1 || d > 31 || 
+                 y < 1870 || y > now.getFullYear()) {
+                
+                const err = document.getElementById('error-msg');
+                err.classList.remove('hidden');
+                err.innerText = "Invalid date. Check Month (1-12) & Year (1870+).";
+                return; 
+            }
+
+            const birthDate = new Date(y, m - 1, d);
+            if (birthDate > now) {
+                document.getElementById('error-msg').classList.remove('hidden');
+                return;
+            }
+            
+            launch(birthDate);
+        });
+
+        function launch(birthDate) {
+            const now = new Date();
+            const diffTime = Math.abs(now - birthDate);
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            const weeksLived = Math.floor(diffDays / 7);
+            const age = now.getFullYear() - birthDate.getFullYear();
+
+            stats.lived.innerText = weeksLived.toLocaleString();
+            const pct = ((weeksLived / TOTAL_WEEKS) * 100).toFixed(1);
+            stats.percent.innerText = `${pct}%`;
+            stats.bar.style.width = `${pct}%`;
+            
+            stats.summers.innerText = Math.floor(TOTAL_YEARS - (diffDays / 365.25));
+            stats.saturdays.innerText = (TOTAL_WEEKS - weeksLived).toLocaleString();
+
+            let era = "Prime Years";
+            if(age < 18) era = "The Origin Story";
+            else if(age < 30) era = "The Ascent";
+            else if(age < 50) era = "The Apex";
+            else if(age < 70) era = "The Golden Hour";
+            else era = "The Legacy";
+            stats.era.innerText = era;
+
+            const q = quotes[Math.floor(Math.random() * quotes.length)];
+            stats.quoteText.innerText = `"${q.text}"`;
+            stats.quoteAuthor.innerText = `— ${q.author}`;
+
+            viewInput.style.display = 'none';
+            viewVisual.classList.remove('hidden');
+            viewVisual.style.display = 'flex';
+            document.getElementById('reset-btn').classList.remove('hidden');
+
+            renderGrid(weeksLived);
+            requestAnimationFrame(() => {
+                requestAnimationFrame(fitGrid);
+            });
+        }
+
+        window.addEventListener('resize', fitGrid);
+
+        function fitGrid() {
+            if (viewVisual.classList.contains('hidden')) return;
+
+            // Simple width-based grid styling for mobile/scrollable contexts
+            if (window.innerWidth < 768) {
+                // Ensure grid container takes full width
+                gridContainer.style.width = '100%';
+                // Increase gaps slightly for readability on mobile unless dense
+                // Force gap to be handled via CSS
+                gridContainer.style.gridGap = '1px'; 
+                return;
+            }
+
+            // Desktop logic
+            const parent = document.getElementById('grid-container-parent');
+            
+            const PAD = 30; 
+            const availW = parent.clientWidth - PAD;
+            const availH = parent.clientHeight - PAD;
+
+            // Grid aspect ratio: 52 cols wide, 90 rows tall
+            const gridRatio = 52 / 90;
+
+            let finalW = availH * gridRatio;
+            if (finalW > availW) {
+                finalW = availW;
+            }
+
+            if (finalW < 300) finalW = 300; 
+            
+            gridContainer.style.width = `${Math.floor(finalW)}px`;
+            // Reset gap for desktop
+            gridContainer.style.gridGap = '2px';
+        }
+
+        function renderGrid(weeksLived) {
+            gridContainer.style.gridTemplateColumns = `repeat(52, 1fr)`;
+            gridContainer.innerHTML = '';
+            const frag = document.createDocumentFragment();
+            
+            for (let i = 0; i < TOTAL_WEEKS; i++) {
+                const div = document.createElement('div');
+                let className = "aspect-square w-full rounded-[0.5px] week-cell ";
+                
+                if (i < weeksLived) {
+                    if (i < 936) className += "bg-indigo-300 dark:bg-indigo-400 "; 
+                    else className += "bg-indigo-600 dark:bg-indigo-600 "; 
+                } else if (i === weeksLived) {
+                    className += "bg-amber-500 animate-pulse shadow-[0_0_10px_#f59e0b] z-20 relative ";
+                } else {
+                    className += "bg-zinc-300 dark:bg-zinc-800 ";
+                }
+                
+                div.className = className;
+                frag.appendChild(div);
+            }
+            gridContainer.appendChild(frag);
+        }
+    </script>
+</body>
+</html>
