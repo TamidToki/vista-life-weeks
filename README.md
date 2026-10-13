@@ -11,7 +11,7 @@ A Python HTTP server has been started on port 8000.
 
 ### Option 2: Run the Server Manually
 If the server stops or you wish to run it later:
-1. Open a terminal in the project directory: `d:\Antigravity Folder\Life Weeks App- Web`
+1. Open a terminal in the project directory (the folder that contains `index.html`)
 2. Run: `python -m http.server 8000`
 3. Open [http://localhost:8000](http://localhost:8000)
 
